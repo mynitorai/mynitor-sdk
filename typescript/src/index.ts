@@ -18,7 +18,7 @@ export class MyNitor {
     private constructor(config: MyNitorConfig) {
         this.config = {
             environment: 'production',
-            endpoint: 'https://app.mynitor.ai/api/v1/events',
+            endpoint: 'https://www.mynitor.ai/api/v1/events',
             ...config
         };
     }

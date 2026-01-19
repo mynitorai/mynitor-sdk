@@ -13,7 +13,7 @@ logger = logging.getLogger("mynitor")
 class Mynitor:
     def __init__(self, api_key=None, api_url=None, environment="prod"):
         self.api_key = api_key or os.getenv("MYNITOR_API_KEY")
-        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://devmynitorai.netlify.app/api/v1/events")
+        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://www.mynitor.ai/api/v1/events")
         self.environment = environment
 
     def _get_callsite(self):
