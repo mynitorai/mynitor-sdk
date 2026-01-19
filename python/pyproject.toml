@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mynitor"
+version = "0.1.0"
+description = "Production safety and observability for AI systems."
+readme = "README.md"
+authors = [{ name = "MyNitor AI", email = "hello@mynitor.ai" }]
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.25.0",
+]
+
+[project.urls]
+Homepage = "https://mynitor.ai"
+Repository = "https://github.com/mynitorai/mynitor-sdk"

@@ -1,0 +1,33 @@
+{
+    "name": "@mynitor/sdk",
+    "version": "0.1.0",
+    "description": "Production safety and observability for AI systems.",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "prepublishOnly": "npm run build"
+    },
+    "keywords": [
+        "ai",
+        "observability",
+        "monitoring",
+        "openai",
+        "anthropic",
+        "llm",
+        "safety"
+    ],
+    "author": "MyNitor AI",
+    "license": "MIT",
+    "peerDependencies": {
+        "openai": "^4.0.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "openai": "^4.0.0",
+        "@types/node": "^20.0.0"
+    }
+}
