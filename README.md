@@ -17,10 +17,10 @@ mynitor.init(api_key="your_api_key").instrument()
 
 ### TypeScript / Node.js
 ```bash
-npm install @mynitor/sdk
+npm install @mynitorai/sdk
 ```
 ```typescript
-import { MyNitor } from '@mynitor/sdk';
+import { MyNitor } from '@mynitorai/sdk';
 MyNitor.init({ apiKey: 'your_api_key' }).instrument();
 ```
 
