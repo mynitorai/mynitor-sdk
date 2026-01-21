@@ -6,7 +6,6 @@
 
 export interface MyNitorConfig {
     apiKey: string;
-    environment?: string;
     endpoint?: string;
 }
 
@@ -17,8 +16,7 @@ export class MyNitor {
 
     private constructor(config: MyNitorConfig) {
         this.config = {
-            environment: 'production',
-            endpoint: 'https://www.mynitor.ai/api/v1/events',
+            endpoint: 'https://app.mynitor.ai/api/v1/events',
             ...config
         };
     }
@@ -41,9 +39,42 @@ export class MyNitor {
         console.log('🚀 MyNitor: Auto-instrumentation active.');
     }
 
+    private getCallSite() {
+        try {
+            const err = new Error();
+            const stack = err.stack?.split('\n') || [];
+
+            // Look for the frame that called the LLM method
+            // Stack usually: Error -> getCallSite -> wrapOpenAI wrapper -> USER CODE
+            // We iterate to find the first frame NOT in MyNitor SDK
+
+            for (const line of stack) {
+                if (!line.includes('mynitor') && !line.includes('Error') && line.includes('/')) {
+                    // Typical format: "    at Object.myFunction (/path/to/file.ts:10:5)"
+                    const match = line.match(/at\s+(?:(.+?)\s+\()?(.*?):(\d+):(\d+)\)?/);
+                    if (match) {
+                        const func = match[1] || 'anonymous';
+                        const fullPath = match[2];
+                        const filename = fullPath.split('/').pop()?.split('.')[0] || 'unknown';
+
+                        return {
+                            file: fullPath,
+                            line: parseInt(match[3]),
+                            functionName: func,
+                            workflowGuess: `${filename}:${func}`.replace('Object.', '')
+                        };
+                    }
+                }
+            }
+        } catch (e) {
+            // fail safe
+        }
+        return { file: 'unknown', line: 0, functionName: 'unknown', workflowGuess: 'default-workflow' };
+    }
+
     private async sendEvent(payload: any) {
         try {
-            // Fire and forget - we don't await this to keep the user's app fast
+            // Fire and forget
             fetch(this.config.endpoint!, {
                 method: 'POST',
                 headers: {
@@ -52,20 +83,14 @@ export class MyNitor {
                 },
                 body: JSON.stringify({
                     ...payload,
-                    environment: this.config.environment,
                     eventVersion: '1.0'
                 })
-            }).catch(() => {
-                /* Silently fail to protect the user's production app */
-            });
-        } catch (e) {
-            /* Silently fail */
-        }
+            }).catch(() => { });
+        } catch (e) { }
     }
 
     private wrapOpenAI() {
         try {
-            // Detect if OpenAI is installed
             const OpenAI = require('openai');
             if (!OpenAI || !OpenAI.OpenAI) return;
 
@@ -75,16 +100,21 @@ export class MyNitor {
             OpenAI.OpenAI.Chat.Completions.prototype.create = async function (this: any, ...args: any[]) {
                 const start = Date.now();
                 const body = args[0];
+                const callsite = self.getCallSite();
 
                 try {
                     const result = await originalChatCreate.apply(this, args);
                     const end = Date.now();
 
-                    // Background capture
                     self.sendEvent({
                         requestId: result.id || `req_${Date.now()}`,
                         model: result.model || body.model,
                         provider: 'openai',
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        functionName: callsite.functionName,
+                        lineNumber: callsite.line,
                         inputTokens: result.usage?.prompt_tokens || 0,
                         outputTokens: result.usage?.completion_tokens || 0,
                         latencyMs: end - start,
@@ -99,8 +129,10 @@ export class MyNitor {
                         requestId: `err_${Date.now()}`,
                         model: body?.model || 'unknown',
                         provider: 'openai',
-                        inputTokens: 0,
-                        outputTokens: 0,
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        functionName: callsite.functionName,
                         latencyMs: end - start,
                         status: 'error',
                         errorType: error?.constructor?.name || 'Error'
@@ -109,11 +141,9 @@ export class MyNitor {
                     throw error;
                 }
             };
-        } catch (e) {
-            // Library not found or version mismatch - skip silently
-        }
+        } catch (e) { }
     }
 }
 
-// Global accessor for snippet simplicity
+// Global accessor
 export const init = MyNitor.init;

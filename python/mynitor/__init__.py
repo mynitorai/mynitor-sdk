@@ -11,10 +11,9 @@ from contextlib import contextmanager
 logger = logging.getLogger("mynitor")
 
 class Mynitor:
-    def __init__(self, api_key=None, api_url=None, environment="prod"):
+    def __init__(self, api_key=None, api_url=None):
         self.api_key = api_key or os.getenv("MYNITOR_API_KEY")
-        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://www.mynitor.ai/api/v1/events")
-        self.environment = environment
+        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://devmynitorai.netlify.app/api/v1/events")
 
     def _get_callsite(self):
         """
@@ -56,19 +55,38 @@ class Mynitor:
             pass
         return {}
 
+    def _derive_workflow_name(self, callsite):
+        """
+        Smart Naming: generic "default-workflow" is redundant.
+        We should use the file:function as the default workflow name.
+        """
+        try:
+            filename = os.path.basename(callsite.get("file", "unknown"))
+            # remove extension
+            if "." in filename:
+                filename = filename.rsplit(".", 1)[0]
+            
+            func = callsite.get("function_name", "unknown")
+            return f"{filename}:{func}"
+        except Exception:
+            return "default-workflow"
+
     @contextmanager
-    def monitor(self, agent: str, workflow: str, model: str, provider: str = "other"):
+    def monitor(self, agent: str, workflow: str = None, model: str = None, provider: str = "other"):
         """
         Context manager to track LLM calls.
         Usage:
             with mn.monitor(agent="bot", workflow="chat", model="gpt-4") as tracker:
                 # ... call LLM ...
-                tracker.set_usage(input_tokens=100, output_tokens=50)
         """
         start_time = time.time()
         request_id = str(uuid.uuid4())
         callsite = self._get_callsite()
         
+        # Smart Naming
+        if not workflow:
+            workflow = self._derive_workflow_name(callsite)
+
         # Internal state to capture usage
         state = {
             "input_tokens": 0,
@@ -111,14 +129,13 @@ class Mynitor:
                     provider=provider,
                     request_id=request_id,
                     latency_ms=latency,
-                    environment=self.environment,
                     **callsite,
                     **state
                 )
             except Exception as e:
                 logger.warning(f"Mynitor Telemetry Failed: {e}")
 
-    def instrument_openai(self, client, agent: str = "default-agent", workflow: str = "default-workflow"):
+    def instrument_openai(self, client, agent: str = "default-agent", workflow: str = None):
         """
         Wraps an OpenAI client (or OpenAI-compatible client like DeepSeek/Groq) 
         to automatically track usage.
@@ -130,6 +147,11 @@ class Mynitor:
             start_time = time.time()
             request_id = str(uuid.uuid4())
             callsite = self._get_callsite()
+
+            # Smart Naming
+            current_workflow = workflow
+            if not current_workflow:
+                current_workflow = self._derive_workflow_name(callsite)
             
             try:
                 response = original_create(*args, **kwargs)
@@ -143,12 +165,11 @@ class Mynitor:
                 
                 self._send_event(
                     agent=agent,
-                    workflow=workflow,
+                    workflow=current_workflow,
                     model=model,
                     provider="openai",
                     request_id=request_id,
                     latency_ms=latency,
-                    environment=self.environment,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     status="success",
@@ -156,13 +177,13 @@ class Mynitor:
                 )
                 return response
             except Exception as e:
-                self._handle_exception(e, agent, workflow, model, "openai", request_id, start_time, callsite)
+                self._handle_exception(e, agent, current_workflow, model, "openai", request_id, start_time, callsite)
                 raise e
 
         client.chat.completions.create = patched_create
         return client
 
-    def instrument_anthropic(self, client, agent: str = "default-agent", workflow: str = "default-workflow"):
+    def instrument_anthropic(self, client, agent: str = "default-agent", workflow: str = None):
         """
         Wraps an Anthropic client to automatically track usage.
         """
@@ -174,6 +195,11 @@ class Mynitor:
             request_id = str(uuid.uuid4())
             callsite = self._get_callsite()
             
+            # Smart Naming
+            current_workflow = workflow
+            if not current_workflow:
+                current_workflow = self._derive_workflow_name(callsite)
+
             try:
                 response = original_create(*args, **kwargs)
                 
@@ -185,12 +211,11 @@ class Mynitor:
                 
                 self._send_event(
                     agent=agent,
-                    workflow=workflow,
+                    workflow=current_workflow,
                     model=model,
                     provider="anthropic",
                     request_id=request_id,
                     latency_ms=latency,
-                    environment=self.environment,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     status="success",
@@ -198,13 +223,13 @@ class Mynitor:
                 )
                 return response
             except Exception as e:
-                self._handle_exception(e, agent, workflow, model, "anthropic", request_id, start_time, callsite)
+                self._handle_exception(e, agent, current_workflow, model, "anthropic", request_id, start_time, callsite)
                 raise e
 
         client.messages.create = patched_create
         return client
 
-    def instrument_gemini(self, model_instance, agent: str = "default-agent", workflow: str = "default-workflow"):
+    def instrument_gemini(self, model_instance, agent: str = "default-agent", workflow: str = None):
         """
         Wraps a Google GenerativeAI (Gemini) model instance to automatically track usage.
         """
@@ -216,6 +241,11 @@ class Mynitor:
             request_id = str(uuid.uuid4())
             callsite = self._get_callsite()
             
+            # Smart Naming
+            current_workflow = workflow
+            if not current_workflow:
+                current_workflow = self._derive_workflow_name(callsite)
+
             try:
                 response = original_generate(*args, **kwargs)
                 
@@ -227,12 +257,11 @@ class Mynitor:
                 
                 self._send_event(
                     agent=agent,
-                    workflow=workflow,
+                    workflow=current_workflow,
                     model=model_name,
                     provider="google",
                     request_id=request_id,
                     latency_ms=latency,
-                    environment=self.environment,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     status="success",
@@ -240,7 +269,7 @@ class Mynitor:
                 )
                 return response
             except Exception as e:
-                self._handle_exception(e, agent, workflow, model_name, "google", request_id, start_time, callsite)
+                self._handle_exception(e, agent, current_workflow, model_name, "google", request_id, start_time, callsite)
                 raise e
 
         model_instance.generate_content = patched_generate
@@ -257,7 +286,6 @@ class Mynitor:
                 provider=provider,
                 request_id=request_id,
                 latency_ms=latency,
-                environment=self.environment,
                 status="error",
                 error_type=type(e).__name__,
                 metadata={"error_message": str(e)},
@@ -287,12 +315,12 @@ class Mynitor:
 # Global Instance for Magic Initialization
 _instance = None
 
-def init(api_key=None, environment="prod"):
+def init(api_key=None):
     global _instance
-    _instance = Mynitor(api_key=api_key, environment=environment)
+    _instance = Mynitor(api_key=api_key)
     return _instance
 
-def instrument():
+def instrument(agent: str = "default-agent"):
     if not _instance:
         logger.warning("Mynitor.init() must be called before instrument()")
         return
@@ -302,9 +330,9 @@ def instrument():
         import openai
         # Try Patching the Global OpenAI Sync Client and Async Client
         if hasattr(openai, 'OpenAI'):
-            _instance.instrument_openai(openai.OpenAI)
+            _instance.instrument_openai(openai.OpenAI, agent=agent)
         if hasattr(openai, 'AsyncOpenAI'):
-            _instance.instrument_openai(openai.AsyncOpenAI)
+            _instance.instrument_openai(openai.AsyncOpenAI, agent=agent)
     except ImportError:
         pass
     

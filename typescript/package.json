@@ -1,5 +1,5 @@
 {
-    "name": "@mynitorai/sdk",
+    "name": "@mynitor/sdk",
     "version": "0.1.1",
     "description": "Production safety and observability for AI systems.",
     "main": "dist/index.js",
