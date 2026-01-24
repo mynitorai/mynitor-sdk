@@ -13,6 +13,7 @@ export class MyNitor {
     private static instance: MyNitor;
     private config: MyNitorConfig;
     private isInstrumented: boolean = false;
+    private pendingPromises: Set<Promise<any>> = new Set();
 
     private constructor(config: MyNitorConfig) {
         this.config = {
@@ -37,6 +38,22 @@ export class MyNitor {
         this.wrapOpenAI();
         this.isInstrumented = true;
         console.log('🚀 MyNitor: Auto-instrumentation active.');
+    }
+
+    /**
+     * Waits for all pending network requests to complete.
+     * Call this before your process exits (e.g. in AWS Lambda or scripts).
+     * @param timeoutMs Maximum time to wait in milliseconds (default: 10000)
+     */
+    public async flush(timeoutMs: number = 10000): Promise<void> {
+        if (this.pendingPromises.size === 0) return;
+
+        console.log(`🚀 MyNitor: Flushing ${this.pendingPromises.size} pending logs...`);
+
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, timeoutMs));
+        const allSettledPromise = Promise.allSettled(this.pendingPromises);
+
+        await Promise.race([allSettledPromise, timeoutPromise]);
     }
 
     private getCallSite() {
@@ -75,7 +92,8 @@ export class MyNitor {
     private async sendEvent(payload: any) {
         try {
             // Fire and forget
-            fetch(this.config.endpoint!, {
+            // Fire and forget (but track)
+            const promise = fetch(this.config.endpoint!, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -85,7 +103,14 @@ export class MyNitor {
                     ...payload,
                     eventVersion: '1.0'
                 })
-            }).catch(() => { });
+            })
+                .then(() => { })
+                .catch(() => { })
+                .finally(() => {
+                    this.pendingPromises.delete(promise);
+                });
+
+            this.pendingPromises.add(promise);
         } catch (e) { }
     }
 
