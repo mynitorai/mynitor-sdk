@@ -5,6 +5,8 @@ import requests
 import logging
 import inspect
 import hashlib
+import atexit
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -13,7 +15,32 @@ logger = logging.getLogger("mynitor")
 class Mynitor:
     def __init__(self, api_key=None, api_url=None):
         self.api_key = api_key or os.getenv("MYNITOR_API_KEY")
-        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://devmynitorai.netlify.app/api/v1/events")
+        self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai/api/v1/events")
+        self._executor = ThreadPoolExecutor(max_workers=5)
+        self._setup_auto_flush()
+
+    def _setup_auto_flush(self):
+        is_serverless = any(os.getenv(k) for k in [
+            "AWS_LAMBDA_FUNCTION_NAME", 
+            "VERCEL", 
+            "NETLIFY", 
+            "FUNCTIONS_WORKER_RUNTIME"
+        ])
+        
+        if not is_serverless:
+            atexit.register(self.flush)
+        else:
+            logger.info("🚀 MyNitor: Serverless environment detected. Ensure you call `mn.flush()` before your function returns.")
+
+    def flush(self, timeout=10):
+        """
+        Waits for all pending network requests to complete.
+        Call this before your function returns in serverless environments.
+        """
+        if self._executor:
+            self._executor.shutdown(wait=True)
+            # Re-create executor in case the instance is reused
+            self._executor = ThreadPoolExecutor(max_workers=5)
 
     def _get_callsite(self):
         """
@@ -295,6 +322,9 @@ class Mynitor:
             pass
 
     def _send_event(self, **kwargs):
+        if not self._executor:
+             return
+
         payload = {
             "event_version": "1.0",
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -306,9 +336,15 @@ class Mynitor:
             "Content-Type": "application/json"
         }
         
-        # Fire and forget / simple POST
+        # Dispatch to background thread
         try:
-            requests.post(self.api_url, json=payload, headers=headers, timeout=2)
+            self._executor.submit(self._do_send_request, payload, headers)
+        except Exception:
+            pass
+
+    def _do_send_request(self, payload, headers):
+        try:
+            requests.post(self.api_url, json=payload, headers=headers, timeout=5)
         except Exception:
             pass # Fail-safe
 
