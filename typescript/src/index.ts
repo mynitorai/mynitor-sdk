@@ -121,7 +121,8 @@ export class MyNitor {
                 },
                 body: JSON.stringify({
                     ...payload,
-                    eventVersion: '1.0'
+                    event_version: '1.0',
+                    timestamp: new Date().toISOString()
                 })
             })
                 .then(() => { })
@@ -152,17 +153,17 @@ export class MyNitor {
                     const end = Date.now();
 
                     self.sendEvent({
-                        requestId: result.id || `req_${Date.now()}`,
+                        request_id: result.id || `req_${Date.now()}`,
                         model: result.model || body.model,
                         provider: 'openai',
                         agent: 'default-agent',
                         workflow: callsite.workflowGuess,
                         file: callsite.file,
-                        functionName: callsite.functionName,
-                        lineNumber: callsite.line,
-                        inputTokens: result.usage?.prompt_tokens || 0,
-                        outputTokens: result.usage?.completion_tokens || 0,
-                        latencyMs: end - start,
+                        function_name: callsite.functionName,
+                        line_number: callsite.line,
+                        input_tokens: result.usage?.prompt_tokens || 0,
+                        output_tokens: result.usage?.completion_tokens || 0,
+                        latency_ms: end - start,
                         status: 'success'
                     });
 
@@ -171,16 +172,16 @@ export class MyNitor {
                     const end = Date.now();
 
                     self.sendEvent({
-                        requestId: `err_${Date.now()}`,
+                        request_id: `err_${Date.now()}`,
                         model: body?.model || 'unknown',
                         provider: 'openai',
                         agent: 'default-agent',
                         workflow: callsite.workflowGuess,
                         file: callsite.file,
-                        functionName: callsite.functionName,
-                        latencyMs: end - start,
+                        function_name: callsite.functionName,
+                        latency_ms: end - start,
                         status: 'error',
-                        errorType: error?.constructor?.name || 'Error'
+                        error_type: error?.constructor?.name || 'Error'
                     });
 
                     throw error;
