@@ -20,6 +20,26 @@ export class MyNitor {
             endpoint: 'https://app.mynitor.ai/api/v1/events',
             ...config
         };
+
+        this.setupAutoFlush();
+    }
+
+    private setupAutoFlush(): void {
+        const isServerless = !!(
+            process.env.AWS_LAMBDA_FUNCTION_NAME ||
+            process.env.VERCEL ||
+            process.env.NETLIFY ||
+            process.env.FUNCTIONS_WORKER_RUNTIME
+        );
+
+        if (!isServerless && typeof process !== 'undefined' && typeof process.on === 'function') {
+            // Local script or long-running process
+            process.on('beforeExit', async () => {
+                await this.flush();
+            });
+        } else if (isServerless) {
+            console.warn('🚀 MyNitor: Serverless environment detected. Ensure you call `await mn.flush()` before your function returns to guarantee log delivery.');
+        }
     }
 
     public static init(config: MyNitorConfig): MyNitor {
