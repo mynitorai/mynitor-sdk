@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mynitor"
-version = "0.1.4"
+version = "0.1.7"
 description = "Production safety and observability for AI systems."
 readme = "README.md"
 authors = [{ name = "MyNitor AI", email = "hello@mynitor.ai" }]

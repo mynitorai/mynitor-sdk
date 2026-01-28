@@ -168,6 +168,10 @@ class Mynitor:
         to automatically track usage.
         """
         original_create = client.chat.completions.create
+        
+        # Idempotency Check
+        if getattr(original_create, "_is_mynitor_wrapped", False):
+            return client
 
         def patched_create(*args, **kwargs):
             model = kwargs.get("model", "unknown")
@@ -208,6 +212,7 @@ class Mynitor:
                 raise e
 
         client.chat.completions.create = patched_create
+        setattr(patched_create, "_is_mynitor_wrapped", True)
         return client
 
     def instrument_anthropic(self, client, agent: str = "default-agent", workflow: str = None):
@@ -215,6 +220,10 @@ class Mynitor:
         Wraps an Anthropic client to automatically track usage.
         """
         original_create = client.messages.create
+
+        # Idempotency Check
+        if getattr(original_create, "_is_mynitor_wrapped", False):
+            return client
 
         def patched_create(*args, **kwargs):
             model = kwargs.get("model", "unknown")
@@ -254,6 +263,7 @@ class Mynitor:
                 raise e
 
         client.messages.create = patched_create
+        setattr(patched_create, "_is_mynitor_wrapped", True)
         return client
 
     def instrument_gemini(self, model_instance, agent: str = "default-agent", workflow: str = None):
@@ -261,6 +271,10 @@ class Mynitor:
         Wraps a Google GenerativeAI (Gemini) model instance to automatically track usage.
         """
         original_generate = model_instance.generate_content
+        
+        # Idempotency Check
+        if getattr(original_generate, "_is_mynitor_wrapped", False):
+            return model_instance
 
         def patched_generate(*args, **kwargs):
             model_name = getattr(model_instance, 'model_name', "gemini-unknown")
@@ -300,6 +314,7 @@ class Mynitor:
                 raise e
 
         model_instance.generate_content = patched_generate
+        setattr(patched_create, "_is_mynitor_wrapped", True)
         return model_instance
 
     def _handle_exception(self, e, agent, workflow, model, provider, request_id, start_time, callsite=None):

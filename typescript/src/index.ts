@@ -53,8 +53,9 @@ export class MyNitor {
      * Automatically detect and wrap AI libraries like OpenAI
      */
     public instrument(): void {
-        if (this.isInstrumented) return;
-
+        // We do NOT check this.isInstrumented here. 
+        // We must check the actual OpenAI object every time, 
+        // because test runners may have reloaded the module.
         this.wrapOpenAI();
         this.isInstrumented = true;
         console.log('🚀 MyNitor: Auto-instrumentation active.');
@@ -140,10 +141,16 @@ export class MyNitor {
             const OpenAI = require('openai');
             if (!OpenAI || !OpenAI.OpenAI) return;
 
+            // Idempotency: Check if already patched on THIS specific instance of the module
+            // This prevents "zombie singleton" issues in test runners that reload modules
+            if ((OpenAI.OpenAI.Chat.Completions.prototype.create as any)._isMynitorWrapped) {
+                return;
+            }
+
             const self = this;
             const originalChatCreate = OpenAI.OpenAI.Chat.Completions.prototype.create;
 
-            OpenAI.OpenAI.Chat.Completions.prototype.create = async function (this: any, ...args: any[]) {
+            const wrapped = async function (this: any, ...args: any[]) {
                 const start = Date.now();
                 const body = args[0];
                 const callsite = self.getCallSite();
@@ -187,6 +194,11 @@ export class MyNitor {
                     throw error;
                 }
             };
+
+            // Mark it so we don't wrap it twice on the same module instance
+            (wrapped as any)._isMynitorWrapped = true;
+            OpenAI.OpenAI.Chat.Completions.prototype.create = wrapped;
+
         } catch (e) { }
     }
 }
