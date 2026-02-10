@@ -136,7 +136,8 @@ export class MyNitor {
 
     private wrapOpenAI() {
         try {
-            const OpenAI = require('openai');
+            let OpenAI = require('openai');
+            if (OpenAI && OpenAI.default) OpenAI = OpenAI.default;
             if (!OpenAI || !OpenAI.OpenAI) return;
 
             const target = OpenAI.OpenAI.Chat.Completions.prototype;
@@ -194,7 +195,8 @@ export class MyNitor {
 
     private wrapAnthropic() {
         try {
-            const Anthropic = require('@anthropic-ai/sdk');
+            let Anthropic = require('@anthropic-ai/sdk');
+            if (Anthropic && Anthropic.default) Anthropic = Anthropic.default;
             if (!Anthropic || !Anthropic.Messages) return;
 
             const target = Anthropic.Messages.prototype;
@@ -252,7 +254,8 @@ export class MyNitor {
 
     private wrapGemini() {
         try {
-            const GoogleGenAI = require('@google/generative-ai');
+            let GoogleGenAI = require('@google/generative-ai');
+            if (GoogleGenAI && GoogleGenAI.default) GoogleGenAI = GoogleGenAI.default;
             if (!GoogleGenAI || !GoogleGenAI.GenerativeModel) return;
 
             const target = GoogleGenAI.GenerativeModel.prototype;
