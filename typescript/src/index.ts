@@ -11,6 +11,7 @@ export interface MyNitorConfig {
     apiKey: string;
     environment?: string;
     endpoint?: string;
+    workflowId?: string;
 }
 
 export class MyNitor {
@@ -49,6 +50,8 @@ export class MyNitor {
     public static init(config: MyNitorConfig): MyNitor {
         if (!MyNitor.instance) {
             MyNitor.instance = new MyNitor(config);
+        } else {
+            MyNitor.instance.config = { ...MyNitor.instance.config, ...config };
         }
         return MyNitor.instance;
     }
@@ -100,7 +103,7 @@ export class MyNitor {
                             file: fullPath,
                             line: parseInt(match[3]),
                             functionName: func,
-                            workflowGuess: `${filename}:${func}`.replace('Object.', '')
+                            workflowGuess: filename
                         };
                     }
                 }
@@ -160,7 +163,7 @@ export class MyNitor {
                         model: result.model || body.model,
                         provider: 'openai',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         line_number: callsite.line,
@@ -178,7 +181,7 @@ export class MyNitor {
                         model: body?.model || 'unknown',
                         provider: 'openai',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         latency_ms: end - start,
@@ -219,7 +222,7 @@ export class MyNitor {
                         model: result.model || body.model,
                         provider: 'anthropic',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         line_number: callsite.line,
@@ -237,7 +240,7 @@ export class MyNitor {
                         model: body?.model || 'unknown',
                         provider: 'anthropic',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         latency_ms: end - start,
@@ -278,7 +281,7 @@ export class MyNitor {
                         model: this.model || 'gemini',
                         provider: 'google',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         line_number: callsite.line,
@@ -296,7 +299,7 @@ export class MyNitor {
                         model: this.model || 'gemini',
                         provider: 'google',
                         agent: 'default-agent',
-                        workflow: callsite.workflowGuess,
+                        workflow: this.config.workflowId || callsite.workflowGuess,
                         file: callsite.file,
                         function_name: callsite.functionName,
                         latency_ms: end - start,

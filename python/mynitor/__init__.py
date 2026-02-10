@@ -13,9 +13,10 @@ from contextlib import contextmanager
 logger = logging.getLogger("mynitor")
 
 class Mynitor:
-    def __init__(self, api_key=None, api_url=None):
+    def __init__(self, api_key=None, api_url=None, workflow_id=None):
         self.api_key = api_key or os.getenv("MYNITOR_API_KEY")
         self.api_url = api_url or os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai/api/v1/events")
+        self.workflow_id = workflow_id
         self._executor = ThreadPoolExecutor(max_workers=5)
         self._setup_auto_flush()
 
@@ -94,7 +95,7 @@ class Mynitor:
                 filename = filename.rsplit(".", 1)[0]
             
             func = callsite.get("function_name", "unknown")
-            return f"{filename}:{func}"
+            return filename
         except Exception:
             return "default-workflow"
 
@@ -112,7 +113,7 @@ class Mynitor:
         
         # Smart Naming
         if not workflow:
-            workflow = self._derive_workflow_name(callsite)
+            workflow = self.workflow_id or self._derive_workflow_name(callsite)
 
         # Internal state to capture usage
         state = {
@@ -182,7 +183,7 @@ class Mynitor:
             # Smart Naming
             current_workflow = workflow
             if not current_workflow:
-                current_workflow = self._derive_workflow_name(callsite)
+                current_workflow = self.workflow_id or self._derive_workflow_name(callsite)
             
             try:
                 response = original_create(*args, **kwargs)
@@ -234,7 +235,7 @@ class Mynitor:
             # Smart Naming
             current_workflow = workflow
             if not current_workflow:
-                current_workflow = self._derive_workflow_name(callsite)
+                current_workflow = self.workflow_id or self._derive_workflow_name(callsite)
 
             try:
                 response = original_create(*args, **kwargs)
@@ -285,7 +286,7 @@ class Mynitor:
             # Smart Naming
             current_workflow = workflow
             if not current_workflow:
-                current_workflow = self._derive_workflow_name(callsite)
+                current_workflow = self.workflow_id or self._derive_workflow_name(callsite)
 
             try:
                 response = original_generate(*args, **kwargs)
