@@ -218,50 +218,72 @@ class Mynitor:
 
     def instrument_anthropic(self, client, agent: str = "default-agent", workflow: str = None):
         """
-        Wraps an Anthropic client to automatically track usage.
+        Wraps an Anthropic client (Sync or Async) to automatically track usage.
         """
+        # Detect if this is an AsyncAnthropic client
+        is_async = hasattr(client, '__aenter__') or 'Async' in type(client).__name__
         original_create = client.messages.create
 
         # Idempotency Check
         if getattr(original_create, "_is_mynitor_wrapped", False):
             return client
 
-        def patched_create(*args, **kwargs):
-            model = kwargs.get("model", "unknown")
-            start_time = time.time()
-            request_id = str(uuid.uuid4())
-            callsite = self._get_callsite()
-            
-            # Smart Naming
-            current_workflow = workflow
-            if not current_workflow:
-                current_workflow = self.workflow_id or self._derive_workflow_name(callsite)
+        if is_async:
+            async def patched_create(*args, **kwargs):
+                model = kwargs.get("model", "unknown")
+                start_time = time.time()
+                callsite = self._get_callsite()
+                current_workflow = workflow or self.workflow_id or self._derive_workflow_name(callsite)
 
-            try:
-                response = original_create(*args, **kwargs)
-                
-                usage = getattr(response, 'usage', None)
-                input_tokens = getattr(usage, 'input_tokens', 0) if usage else 0
-                output_tokens = getattr(usage, 'output_tokens', 0) if usage else 0
-                
-                latency = int((time.time() - start_time) * 1000)
-                
-                self._send_event(
-                    agent=agent,
-                    workflow=current_workflow,
-                    model=model,
-                    provider="anthropic",
-                    request_id=request_id,
-                    latency_ms=latency,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    status="success",
-                    **callsite
-                )
-                return response
-            except Exception as e:
-                self._handle_exception(e, agent, current_workflow, model, "anthropic", request_id, start_time, callsite)
-                raise e
+                try:
+                    response = await original_create(*args, **kwargs)
+                    usage = getattr(response, 'usage', None)
+                    latency = int((time.time() - start_time) * 1000)
+                    
+                    self._send_event(
+                        agent=agent,
+                        workflow=current_workflow,
+                        model=getattr(response, 'model', model),
+                        provider="anthropic",
+                        request_id=getattr(response, 'id', str(uuid.uuid4())),
+                        latency_ms=latency,
+                        input_tokens=getattr(usage, 'input_tokens', 0) if usage else 0,
+                        output_tokens=getattr(usage, 'output_tokens', 0) if usage else 0,
+                        status="success",
+                        **callsite
+                    )
+                    return response
+                except Exception as e:
+                    self._handle_exception(e, agent, current_workflow, model, "anthropic", str(uuid.uuid4()), start_time, callsite)
+                    raise e
+        else:
+            def patched_create(*args, **kwargs):
+                model = kwargs.get("model", "unknown")
+                start_time = time.time()
+                callsite = self._get_callsite()
+                current_workflow = workflow or self.workflow_id or self._derive_workflow_name(callsite)
+
+                try:
+                    response = original_create(*args, **kwargs)
+                    usage = getattr(response, 'usage', None)
+                    latency = int((time.time() - start_time) * 1000)
+                    
+                    self._send_event(
+                        agent=agent,
+                        workflow=current_workflow,
+                        model=getattr(response, 'model', model),
+                        provider="anthropic",
+                        request_id=getattr(response, 'id', str(uuid.uuid4())),
+                        latency_ms=latency,
+                        input_tokens=getattr(usage, 'input_tokens', 0) if usage else 0,
+                        output_tokens=getattr(usage, 'output_tokens', 0) if usage else 0,
+                        status="success",
+                        **callsite
+                    )
+                    return response
+                except Exception as e:
+                    self._handle_exception(e, agent, current_workflow, model, "anthropic", str(uuid.uuid4()), start_time, callsite)
+                    raise e
 
         client.messages.create = patched_create
         setattr(patched_create, "_is_mynitor_wrapped", True)
@@ -269,53 +291,84 @@ class Mynitor:
 
     def instrument_gemini(self, model_instance, agent: str = "default-agent", workflow: str = None):
         """
-        Wraps a Google GenerativeAI (Gemini) model instance to automatically track usage.
+        Wraps a Google GenerativeAI (Gemini) model instance (Sync or Async) to automatically track usage.
         """
-        original_generate = model_instance.generate_content
-        
-        # Idempotency Check
-        if getattr(original_generate, "_is_mynitor_wrapped", False):
-            return model_instance
+        # Patch both sync and async methods if they exist
+        methods_to_patch = [
+            ("generate_content", False),
+            ("generate_content_async", True)
+        ]
 
-        def patched_generate(*args, **kwargs):
-            model_name = getattr(model_instance, 'model_name', "gemini-unknown")
-            start_time = time.time()
-            request_id = str(uuid.uuid4())
-            callsite = self._get_callsite()
+        for method_name, is_async in methods_to_patch:
+            if not hasattr(model_instance, method_name):
+                continue
             
-            # Smart Naming
-            current_workflow = workflow
-            if not current_workflow:
-                current_workflow = self.workflow_id or self._derive_workflow_name(callsite)
+            original_method = getattr(model_instance, method_name)
+            if getattr(original_method, "_is_mynitor_wrapped", False):
+                continue
 
-            try:
-                response = original_generate(*args, **kwargs)
-                
-                usage = getattr(response, 'usage_metadata', None)
-                input_tokens = getattr(usage, 'prompt_token_count', 0) if usage else 0
-                output_tokens = getattr(usage, 'candidates_token_count', 0) if usage else 0
-                
-                latency = int((time.time() - start_time) * 1000)
-                
-                self._send_event(
-                    agent=agent,
-                    workflow=current_workflow,
-                    model=model_name,
-                    provider="google",
-                    request_id=request_id,
-                    latency_ms=latency,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    status="success",
-                    **callsite
-                )
-                return response
-            except Exception as e:
-                self._handle_exception(e, agent, current_workflow, model_name, "google", request_id, start_time, callsite)
-                raise e
+            if is_async:
+                async def patched_method(*args, **kwargs):
+                    model_name = getattr(model_instance, 'model_name', "gemini-unknown")
+                    start_time = time.time()
+                    request_id = str(uuid.uuid4())
+                    callsite = self._get_callsite()
+                    current_workflow = workflow or self.workflow_id or self._derive_workflow_name(callsite)
 
-        model_instance.generate_content = patched_generate
-        setattr(patched_create, "_is_mynitor_wrapped", True)
+                    try:
+                        response = await original_method(*args, **kwargs)
+                        usage = getattr(response, 'usage_metadata', None)
+                        latency = int((time.time() - start_time) * 1000)
+                        
+                        self._send_event(
+                            agent=agent,
+                            workflow=current_workflow,
+                            model=model_name,
+                            provider="google",
+                            request_id=request_id,
+                            latency_ms=latency,
+                            input_tokens=getattr(usage, 'prompt_token_count', 0) if usage else 0,
+                            output_tokens=getattr(usage, 'candidates_token_count', 0) if usage else 0,
+                            status="success",
+                            **callsite
+                        )
+                        return response
+                    except Exception as e:
+                        self._handle_exception(e, agent, current_workflow, model_name, "google", request_id, start_time, callsite)
+                        raise e
+            else:
+                def patched_method(*args, **kwargs):
+                    model_name = getattr(model_instance, 'model_name', "gemini-unknown")
+                    start_time = time.time()
+                    request_id = str(uuid.uuid4())
+                    callsite = self._get_callsite()
+                    current_workflow = workflow or self.workflow_id or self._derive_workflow_name(callsite)
+
+                    try:
+                        response = original_method(*args, **kwargs)
+                        usage = getattr(response, 'usage_metadata', None)
+                        latency = int((time.time() - start_time) * 1000)
+                        
+                        self._send_event(
+                            agent=agent,
+                            workflow=current_workflow,
+                            model=model_name,
+                            provider="google",
+                            request_id=request_id,
+                            latency_ms=latency,
+                            input_tokens=getattr(usage, 'prompt_token_count', 0) if usage else 0,
+                            output_tokens=getattr(usage, 'candidates_token_count', 0) if usage else 0,
+                            status="success",
+                            **callsite
+                        )
+                        return response
+                    except Exception as e:
+                        self._handle_exception(e, agent, current_workflow, model_name, "google", request_id, start_time, callsite)
+                        raise e
+
+            setattr(model_instance, method_name, patched_method)
+            setattr(patched_method, "_is_mynitor_wrapped", True)
+
         return model_instance
 
     def _handle_exception(self, e, agent, workflow, model, provider, request_id, start_time, callsite=None):
@@ -380,7 +433,6 @@ def instrument(agent: str = "default-agent"):
     # 1. Automatic OpenAI Patching
     try:
         import openai
-        # Try Patching the Global OpenAI Sync Client and Async Client
         if hasattr(openai, 'OpenAI'):
             _instance.instrument_openai(openai.OpenAI, agent=agent)
         if hasattr(openai, 'AsyncOpenAI'):
@@ -388,6 +440,22 @@ def instrument(agent: str = "default-agent"):
     except ImportError:
         pass
     
-    # 2. Add other libraries as needed (Anthropic, etc.)
+    # 2. Automatic Anthropic Patching
+    try:
+        import anthropic
+        if hasattr(anthropic, 'Anthropic'):
+            _instance.instrument_anthropic(anthropic.Anthropic, agent=agent)
+        if hasattr(anthropic, 'AsyncAnthropic'):
+            _instance.instrument_anthropic(anthropic.AsyncAnthropic, agent=agent)
+    except ImportError:
+        pass
+
+    # 3. Automatic Gemini Patching
+    try:
+        import google.generativeai as genai
+        if hasattr(genai, 'GenerativeModel'):
+            _instance.instrument_gemini(genai.GenerativeModel, agent=agent)
+    except ImportError:
+        pass
     
-    print("🚀 MyNitor: Auto-instrumentation active.")
+    logger.info("🚀 MyNitor: Universal Auto-instrumentation active.")
