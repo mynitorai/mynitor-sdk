@@ -15,7 +15,7 @@ jobs:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
       - name: Build and Publish TypeScript SDK
-        working-directory: ./typescript
+        working-directory: ./sdk/typescript
         run: |
           npm install
           npm run build
@@ -36,7 +36,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
       - name: Build and Publish Python SDK
-        working-directory: ./python
+        working-directory: ./sdk/python
         run: |
           python -m build
           python -m twine upload dist/*
