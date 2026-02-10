@@ -4,8 +4,12 @@
  * The "One-Line Magic" for AI Production Safety.
  */
 
+// Symbol to prevent double-patching (Idempotency)
+const WRAPPED_MARKER = Symbol('mynitor_wrapped');
+
 export interface MyNitorConfig {
     apiKey: string;
+    environment?: string;
     endpoint?: string;
 }
 
@@ -17,6 +21,7 @@ export class MyNitor {
 
     private constructor(config: MyNitorConfig) {
         this.config = {
+            environment: 'production',
             endpoint: 'https://app.mynitor.ai/api/v1/events',
             ...config
         };
@@ -33,7 +38,6 @@ export class MyNitor {
         );
 
         if (!isServerless && typeof process !== 'undefined' && typeof process.on === 'function') {
-            // Local script or long-running process
             process.on('beforeExit', async () => {
                 await this.flush();
             });
@@ -50,15 +54,17 @@ export class MyNitor {
     }
 
     /**
-     * Automatically detect and wrap AI libraries like OpenAI
+     * Automatically detect and wrap AI libraries: OpenAI, Anthropic, and Google Gemini
      */
     public instrument(): void {
-        // We do NOT check this.isInstrumented here. 
-        // We must check the actual OpenAI object every time, 
-        // because test runners may have reloaded the module.
+        if (this.isInstrumented) return;
+
         this.wrapOpenAI();
+        this.wrapAnthropic();
+        this.wrapGemini();
+
         this.isInstrumented = true;
-        console.log('🚀 MyNitor: Auto-instrumentation active.');
+        console.log('🚀 MyNitor: Universal Auto-instrumentation active.');
     }
 
     /**
@@ -82,13 +88,8 @@ export class MyNitor {
             const err = new Error();
             const stack = err.stack?.split('\n') || [];
 
-            // Look for the frame that called the LLM method
-            // Stack usually: Error -> getCallSite -> wrapOpenAI wrapper -> USER CODE
-            // We iterate to find the first frame NOT in MyNitor SDK
-
             for (const line of stack) {
                 if (!line.includes('mynitor') && !line.includes('Error') && line.includes('/')) {
-                    // Typical format: "    at Object.myFunction (/path/to/file.ts:10:5)"
                     const match = line.match(/at\s+(?:(.+?)\s+\()?(.*?):(\d+):(\d+)\)?/);
                     if (match) {
                         const func = match[1] || 'anonymous';
@@ -104,16 +105,12 @@ export class MyNitor {
                     }
                 }
             }
-        } catch (e) {
-            // fail safe
-        }
+        } catch (e) { }
         return { file: 'unknown', line: 0, functionName: 'unknown', workflowGuess: 'default-workflow' };
     }
 
     private async sendEvent(payload: any) {
         try {
-            // Fire and forget
-            // Fire and forget (but track)
             const promise = fetch(this.config.endpoint!, {
                 method: 'POST',
                 headers: {
@@ -122,6 +119,7 @@ export class MyNitor {
                 },
                 body: JSON.stringify({
                     ...payload,
+                    environment: this.config.environment,
                     event_version: '1.0',
                     timestamp: new Date().toISOString()
                 })
@@ -141,22 +139,19 @@ export class MyNitor {
             const OpenAI = require('openai');
             if (!OpenAI || !OpenAI.OpenAI) return;
 
-            // Idempotency: Check if already patched on THIS specific instance of the module
-            // This prevents "zombie singleton" issues in test runners that reload modules
-            if ((OpenAI.OpenAI.Chat.Completions.prototype.create as any)._isMynitorWrapped) {
-                return;
-            }
+            const target = OpenAI.OpenAI.Chat.Completions.prototype;
+            if (target[WRAPPED_MARKER]) return;
 
             const self = this;
-            const originalChatCreate = OpenAI.OpenAI.Chat.Completions.prototype.create;
+            const originalCreate = target.create;
 
-            const wrapped = async function (this: any, ...args: any[]) {
+            target.create = async function (this: any, ...args: any[]) {
                 const start = Date.now();
                 const body = args[0];
                 const callsite = self.getCallSite();
 
                 try {
-                    const result = await originalChatCreate.apply(this, args);
+                    const result = await originalCreate.apply(this, args);
                     const end = Date.now();
 
                     self.sendEvent({
@@ -177,7 +172,6 @@ export class MyNitor {
                     return result;
                 } catch (error: any) {
                     const end = Date.now();
-
                     self.sendEvent({
                         request_id: `err_${Date.now()}`,
                         model: body?.model || 'unknown',
@@ -190,15 +184,127 @@ export class MyNitor {
                         status: 'error',
                         error_type: error?.constructor?.name || 'Error'
                     });
-
                     throw error;
                 }
             };
 
-            // Mark it so we don't wrap it twice on the same module instance
-            (wrapped as any)._isMynitorWrapped = true;
-            OpenAI.OpenAI.Chat.Completions.prototype.create = wrapped;
+            target[WRAPPED_MARKER] = true;
+        } catch (e) { }
+    }
 
+    private wrapAnthropic() {
+        try {
+            const Anthropic = require('@anthropic-ai/sdk');
+            if (!Anthropic || !Anthropic.Messages) return;
+
+            const target = Anthropic.Messages.prototype;
+            if (target[WRAPPED_MARKER]) return;
+
+            const self = this;
+            const originalCreate = target.create;
+
+            target.create = async function (this: any, ...args: any[]) {
+                const start = Date.now();
+                const body = args[0];
+                const callsite = self.getCallSite();
+
+                try {
+                    const result = await originalCreate.apply(this, args);
+                    const end = Date.now();
+
+                    self.sendEvent({
+                        request_id: result.id || `ant_${Date.now()}`,
+                        model: result.model || body.model,
+                        provider: 'anthropic',
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        function_name: callsite.functionName,
+                        line_number: callsite.line,
+                        input_tokens: result.usage?.input_tokens || 0,
+                        output_tokens: result.usage?.output_tokens || 0,
+                        latency_ms: end - start,
+                        status: 'success'
+                    });
+
+                    return result;
+                } catch (error: any) {
+                    const end = Date.now();
+                    self.sendEvent({
+                        request_id: `err_ant_${Date.now()}`,
+                        model: body?.model || 'unknown',
+                        provider: 'anthropic',
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        function_name: callsite.functionName,
+                        latency_ms: end - start,
+                        status: 'error',
+                        error_type: error?.constructor?.name || 'Error'
+                    });
+                    throw error;
+                }
+            };
+
+            target[WRAPPED_MARKER] = true;
+        } catch (e) { }
+    }
+
+    private wrapGemini() {
+        try {
+            const GoogleGenAI = require('@google/generative-ai');
+            if (!GoogleGenAI || !GoogleGenAI.GenerativeModel) return;
+
+            const target = GoogleGenAI.GenerativeModel.prototype;
+            if (target[WRAPPED_MARKER]) return;
+
+            const self = this;
+            const originalGenerate = target.generateContent;
+
+            target.generateContent = async function (this: any, ...args: any[]) {
+                const start = Date.now();
+                const callsite = self.getCallSite();
+
+                try {
+                    const result = await originalGenerate.apply(this, args);
+                    const end = Date.now();
+                    const metadata = result.response?.usageMetadata;
+
+                    self.sendEvent({
+                        request_id: `gem_${Date.now()}`,
+                        model: this.model || 'gemini',
+                        provider: 'google',
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        function_name: callsite.functionName,
+                        line_number: callsite.line,
+                        input_tokens: metadata?.promptTokenCount || 0,
+                        output_tokens: metadata?.candidatesTokenCount || 0,
+                        latency_ms: end - start,
+                        status: 'success'
+                    });
+
+                    return result;
+                } catch (error: any) {
+                    const end = Date.now();
+                    self.sendEvent({
+                        request_id: `err_gem_${Date.now()}`,
+                        model: this.model || 'gemini',
+                        provider: 'google',
+                        agent: 'default-agent',
+                        workflow: callsite.workflowGuess,
+                        file: callsite.file,
+                        function_name: callsite.functionName,
+                        latency_ms: end - start,
+                        status: 'error',
+                        error_type: error?.constructor?.name || 'Error'
+                    });
+                    throw error;
+                }
+            };
+
+            target[WRAPPED_MARKER] = true;
         } catch (e) { }
     }
 }
