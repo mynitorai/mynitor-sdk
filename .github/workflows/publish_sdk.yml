@@ -3,6 +3,9 @@ name: Publish SDKs
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
