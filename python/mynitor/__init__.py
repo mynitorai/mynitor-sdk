@@ -309,7 +309,9 @@ class Mynitor:
 
             if is_async:
                 async def patched_method(*args, **kwargs):
-                    model_name = getattr(model_instance, 'model_name', "gemini-unknown")
+                    # If model_instance is a class, the first arg is 'self'
+                    instance = args[0] if (args and hasattr(args[0], 'model_name')) else model_instance
+                    model_name = getattr(instance, 'model_name', "gemini-unknown")
                     start_time = time.time()
                     request_id = str(uuid.uuid4())
                     callsite = self._get_callsite()
@@ -338,7 +340,9 @@ class Mynitor:
                         raise e
             else:
                 def patched_method(*args, **kwargs):
-                    model_name = getattr(model_instance, 'model_name', "gemini-unknown")
+                    # If model_instance is a class, the first arg is 'self'
+                    instance = args[0] if (args and hasattr(args[0], 'model_name')) else model_instance
+                    model_name = getattr(instance, 'model_name', "gemini-unknown")
                     start_time = time.time()
                     request_id = str(uuid.uuid4())
                     callsite = self._get_callsite()
@@ -433,9 +437,10 @@ def instrument(agent: str = "default-agent"):
     # 1. Automatic OpenAI Patching
     try:
         import openai
-        if hasattr(openai, 'OpenAI'):
-            _instance.instrument_openai(openai.OpenAI, agent=agent)
-        if hasattr(openai, 'AsyncOpenAI'):
+        # Check if we should patch classes (magic init) or if clients are already active
+        if hasattr(openai, 'OpenAI') and not isinstance(openai.OpenAI, type):
+             _instance.instrument_openai(openai.OpenAI, agent=agent)
+        if hasattr(openai, 'AsyncOpenAI') and not isinstance(openai.AsyncOpenAI, type):
             _instance.instrument_openai(openai.AsyncOpenAI, agent=agent)
     except ImportError:
         pass
