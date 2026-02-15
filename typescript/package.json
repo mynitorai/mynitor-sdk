@@ -3,6 +3,9 @@
     "version": "0.2.3",
     "description": "Production safety and observability for AI systems.",
     "main": "dist/index.js",
+    "bin": {
+        "mynitor": "dist/cli.js"
+    },
     "types": "dist/index.d.ts",
     "files": [
         "dist"

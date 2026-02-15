@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="mynitor",
-    version="0.1.4",
+    version="0.2.3",
     packages=find_packages(),
     install_requires=[
         "requests>=2.25.0",
