@@ -19,7 +19,7 @@ def run():
     base_url = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai")
 
     if command == "doctor":
-        version = "0.2.9" 
+        version = "0.2.10" 
         print(f"🩺 MyNitor Doctor (v{version})")
         print("---------------------------")
         
