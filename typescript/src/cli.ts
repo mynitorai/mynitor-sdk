@@ -16,6 +16,8 @@ async function run() {
 
     const command = process.argv[2];
 
+    const BASE_URL = process.env.MYNITOR_API_URL || 'https://app.mynitor.ai';
+
     if (command === 'doctor') {
         const pkg = require('../package.json');
         console.log(`🩺 MyNitor Doctor (v${pkg.version})`);
@@ -31,7 +33,8 @@ async function run() {
 
         try {
             console.log('📡 Testing Connection...');
-            const res = await fetch('https://app.mynitor.ai/api/v1/onboarding/status', {
+            const endpoint = `${BASE_URL}/api/v1/onboarding/status`;
+            const res = await fetch(endpoint, {
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
 
@@ -42,8 +45,12 @@ async function run() {
             } else {
                 console.error(`❌ Connection: API returned ${res.status} (${res.statusText})`);
             }
-        } catch (e) {
-            console.error('❌ Connection: Failed to reach app.mynitor.ai');
+        } catch (e: any) {
+            console.error('❌ Connection: Failed to reach MyNitor Cloud');
+            console.error(`   Error details: ${e.message || e}`);
+            if (e.code === 'ENOTFOUND') console.log('   💡 Suggestion: Check your internet connection or DNS settings.');
+            if (e.code === 'ECONNREFUSED') console.log('   💡 Suggestion: The server refused the connection. Is the API URL correct?');
+            if (e.message?.includes('certificate')) console.log('   💡 Suggestion: This looks like an SSL/Certificate issue.');
         }
         return;
     }
@@ -51,7 +58,8 @@ async function run() {
     if (command === 'mock') {
         console.log('🎭 MyNitor: Sending mock OpenAI event to Cloud API...');
         try {
-            const response = await fetch('https://app.mynitor.ai/api/v1/events', {
+            const endpoint = `${BASE_URL}/api/v1/events`;
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -79,8 +87,8 @@ async function run() {
                 const text = await response.text();
                 console.error(`❌ Failed: ${response.status} ${text}`);
             }
-        } catch (error) {
-            console.error('❌ Network Error:', error);
+        } catch (error: any) {
+            console.error('❌ Network Error:', error.message || error);
         }
         return;
     }
@@ -94,14 +102,7 @@ async function run() {
                 environment: 'onboarding-test'
             });
 
-            // Trigger a manual event to verify connection
-            // We use a custom internal method or just a standard track if available
-            // In the current SDK, we can use the private sendEvent if it were public, 
-            // or just trigger instrument() and a small log.
-
-            // For now, let's just use a fetch directly to verify connectivity 
-            // and trigger the onboarding checkmark.
-            const endpoint = 'https://app.mynitor.ai/api/v1/events';
+            const endpoint = `${BASE_URL}/api/v1/events`;
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -130,13 +131,13 @@ async function run() {
                 console.error(`Response: ${text}`);
                 process.exit(1);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Network Error: Could not reach MyNitor Cloud.');
-            console.error(error);
+            console.error(error.message || error);
             process.exit(1);
         }
     } else {
-        console.log('Usage: npx @mynitorai/sdk ping');
+        console.log('Usage: npx @mynitorai/sdk [ping|doctor|mock]');
     }
 }
 

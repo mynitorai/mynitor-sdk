@@ -16,8 +16,10 @@ def run():
 
     command = sys.argv[1]
 
+    base_url = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai")
+
     if command == "doctor":
-        version = "0.2.6" 
+        version = "0.2.7" 
         print(f"🩺 MyNitor Doctor (v{version})")
         print("---------------------------")
         
@@ -30,16 +32,25 @@ def run():
 
         try:
             print("📡 Testing Connection...")
-            res = requests.get("https://app.mynitor.ai/api/v1/onboarding/status", 
-                             headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+            endpoint = f"{base_url}/api/v1/onboarding/status"
+            res = requests.get(endpoint, headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
             if res.status_code == 200:
                 data = res.json()
                 print("✅ Connection: MyNitor Cloud is reachable")
                 print(f"✅ Organization: {data.get('orgId', 'Verified')}")
             else:
                 print(f"❌ Connection: API returned {res.status_code} ({res.reason})")
+        except requests.exceptions.SSLError as e:
+            print("❌ Connection: SSL Certificate Verification Failed")
+            print(f"   Error details: {e}")
+            print("   💡 Suggestion: This looks like an SSL issue. Check your certificate store or proxy.")
+        except requests.exceptions.ConnectionError as e:
+            print("❌ Connection: Failed to reach MyNitor Cloud")
+            print(f"   Error details: {e}")
+            print("   💡 Suggestion: Check your internet connection or DNS settings.")
         except Exception as e:
-            print("❌ Connection: Failed to reach app.mynitor.ai")
+            print(f"❌ Connection: An unexpected error occurred")
+            print(f"   Error: {e}")
         return
 
     if command == "mock":
