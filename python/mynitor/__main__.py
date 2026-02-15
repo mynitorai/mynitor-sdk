@@ -11,10 +11,65 @@ def run():
         sys.exit(1)
 
     if len(sys.argv) < 2:
-        print("Usage: python3 -m mynitor ping")
+        print("Usage: python3 -m mynitor [ping|doctor|mock]")
         sys.exit(1)
 
     command = sys.argv[1]
+
+    if command == "doctor":
+        version = "0.2.6" 
+        print(f"🩺 MyNitor Doctor (v{version})")
+        print("---------------------------")
+        
+        if not api_key:
+            print("❌ API Key: Missing (MYNITOR_API_KEY not found in env)")
+        else:
+            prefix = api_key[:8]
+            last4 = api_key[-4:]
+            print(f"✅ API Key: Detected ({prefix}...{last4})")
+
+        try:
+            print("📡 Testing Connection...")
+            res = requests.get("https://app.mynitor.ai/api/v1/onboarding/status", 
+                             headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                print("✅ Connection: MyNitor Cloud is reachable")
+                print(f"✅ Organization: {data.get('orgId', 'Verified')}")
+            else:
+                print(f"❌ Connection: API returned {res.status_code} ({res.reason})")
+        except Exception as e:
+            print("❌ Connection: Failed to reach app.mynitor.ai")
+        return
+
+    if command == "mock":
+        print("🎭 MyNitor: Sending mock OpenAI event to Cloud API...")
+        endpoint = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai/api/v1/events")
+        payload = {
+            "event_version": "1.0",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "agent": "mynitor-py-cli-mock",
+            "workflow": "diagnostic-mock",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "input_tokens": 150,
+            "output_tokens": 450,
+            "latency_ms": 1200,
+            "status": "success",
+            "metadata": {"type": "diagnostic-mock"}
+        }
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        
+        try:
+            response = requests.post(endpoint, json=payload, headers=headers, timeout=5)
+            if response.status_code in [200, 201]:
+                print("✅ Mock event sent successfully!")
+                print("✨ Check your dashboard /events page to see the generated data.")
+            else:
+                print(f"❌ Failed: {response.status_code} {response.text}")
+        except Exception as e:
+            print(f"❌ Network Error: {e}")
+        return
 
     if command == "ping":
         print("🚀 MyNitor: Sending verification signal to Cloud API...")
