@@ -1,7 +1,7 @@
 import os
 import sys
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from . import init
 
 def run():
@@ -19,7 +19,7 @@ def run():
     base_url = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai")
 
     if command == "doctor":
-        version = "0.2.8" 
+        version = "0.2.9" 
         print(f"🩺 MyNitor Doctor (v{version})")
         print("---------------------------")
         
