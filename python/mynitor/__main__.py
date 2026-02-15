@@ -67,7 +67,7 @@ def run():
         endpoint = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai/api/v1/events")
         payload = {
             "event_version": "1.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "agent": "mynitor-py-cli-mock",
             "workflow": "diagnostic-mock",
             "provider": "openai",
@@ -97,7 +97,7 @@ def run():
         endpoint = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai/api/v1/events")
         payload = {
             "event_version": "1.0",
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "agent": "mynitor-py-cli",
             "workflow": "onboarding-ping",
             "model": "ping-test",
