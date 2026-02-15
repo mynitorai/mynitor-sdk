@@ -25,6 +25,9 @@ def run():
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "agent": "mynitor-py-cli",
             "workflow": "onboarding-ping",
+            "model": "ping-test",
+            "input_tokens": 0,
+            "output_tokens": 0,
             "status": "success",
             "metadata": {"source": "py-cli-ping"}
         }
