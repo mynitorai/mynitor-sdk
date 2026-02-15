@@ -19,7 +19,7 @@ def run():
     base_url = os.getenv("MYNITOR_API_URL", "https://app.mynitor.ai")
 
     if command == "doctor":
-        version = "0.2.7" 
+        version = "0.2.8" 
         print(f"🩺 MyNitor Doctor (v{version})")
         print("---------------------------")
         
@@ -34,6 +34,15 @@ def run():
             print("📡 Testing Connection...")
             endpoint = f"{base_url}/api/v1/onboarding/status"
             res = requests.get(endpoint, headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+            
+            # Check for HTML redirect trap
+            content_type = res.headers.get("Content-Type", "")
+            if "text/html" in content_type:
+                print("❌ Connection: Failed to reach MyNitor Cloud")
+                print("   Error: Received an HTML response instead of JSON.")
+                print("   💡 Suggestion: You might be behind a login portal or proxy redirect.")
+                return
+
             if res.status_code == 200:
                 data = res.json()
                 print("✅ Connection: MyNitor Cloud is reachable")

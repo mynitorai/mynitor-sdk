@@ -39,6 +39,10 @@ async function run() {
             });
 
             if (res.ok) {
+                const contentType = res.headers.get('content-type');
+                if (contentType && contentType.includes('text/html')) {
+                    throw new Error('Received HTML response instead of JSON. You might be behind a login portal or proxy redirect.');
+                }
                 const data = await res.json() as any;
                 console.log(`✅ Connection: MyNitor Cloud is reachable`);
                 console.log(`✅ Organization: ${data.orgId || 'Verified'}`);
